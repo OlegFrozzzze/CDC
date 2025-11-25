@@ -14,7 +14,6 @@ if exist raw_store\_checkpoints rmdir /s /q raw_store\_checkpoints 2>nul
 echo.
 
 echo STEP 1: STOP AND REMOVE EXISTING CONTAINERS
-REM Останавливаем и удаляем ВСЕ контейнеры, связанные с CDC
 echo Stopping and removing ALL CDC-related containers...
 for /f "tokens=*" %%i in ('docker ps -a -q --filter "name=cdc-"') do (docker rm -f %%i >nul 2>&1)
 for /f "tokens=*" %%i in ('docker ps -a -q --filter "name=trigger-cdc-"') do (docker rm -f %%i >nul 2>&1)
@@ -73,7 +72,6 @@ docker exec polling-cdc-postgres psql -U postgres -d testdb -c "SELECT * FROM us
 echo.
 
 echo STEP 5: CHECK KAFKA TOPICS (SHOULD BE EMPTY INITIALLY)
-REM Wait for Kafka to be fully ready (use internal address kafka:29092)
 set /a kafka_retries=0
 :kafka_ready_check
 docker exec polling-cdc-kafka sh -c "kafka-topics --bootstrap-server kafka:29092 --list < /dev/null" >nul 2>&1
@@ -110,22 +108,12 @@ docker exec polling-cdc-kafka sh -c "kafka-console-consumer --bootstrap-server k
 echo.
 
 echo STEP 9: RUN SPARK - READ FROM KAFKA AND SAVE TO RAW_STORE
-docker exec polling-cdc-spark /opt/spark/bin/spark-submit ^
-    --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.2.3 ^
-    --driver-java-options "-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties -Dorg.apache.ivy.core.log.LogOptions=QUIET" ^
-    --conf "spark.ui.showConsoleProgress=false" ^
-    /app/spark_read_kafka.py 2>nul
+docker exec polling-cdc-spark /opt/spark/bin/spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.2.3 --driver-java-options "-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties -Dorg.apache.ivy.core.log.LogOptions=QUIET" --conf "spark.ui.showConsoleProgress=false" /app/spark_read_kafka.py 2>nul
 if errorlevel 1 goto :error
 echo.
 
 echo STEP 10: RUN SPARK - PROCESS RAW_STORE AND CREATE DELTA TABLES
-docker exec polling-cdc-spark /opt/spark/bin/spark-submit ^
-    --packages io.delta:delta-core_2.12:2.1.0 ^
-    --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" ^
-    --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" ^
-    --driver-java-options "-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties -Dorg.apache.ivy.core.log.LogOptions=QUIET" ^
-    --conf "spark.ui.showConsoleProgress=false" ^
-    /app/spark_process_raw.py 2>nul
+docker exec polling-cdc-spark /opt/spark/bin/spark-submit --packages io.delta:delta-core_2.12:2.1.0 --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" --driver-java-options "-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties -Dorg.apache.ivy.core.log.LogOptions=QUIET" --conf "spark.ui.showConsoleProgress=false" /app/spark_process_raw.py 2>nul
 if errorlevel 1 goto :error
 echo.
 
@@ -154,22 +142,12 @@ docker exec polling-cdc-kafka sh -c "kafka-console-consumer --bootstrap-server k
 echo.
 
 echo STEP 14: RUN SPARK - READ NEW DATA FROM KAFKA
-docker exec polling-cdc-spark /opt/spark/bin/spark-submit ^
-    --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.2.3 ^
-    --driver-java-options "-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties -Dorg.apache.ivy.core.log.LogOptions=QUIET" ^
-    --conf "spark.ui.showConsoleProgress=false" ^
-    /app/spark_read_kafka.py 2>nul
+docker exec polling-cdc-spark /opt/spark/bin/spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.2.3 --driver-java-options "-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties -Dorg.apache.ivy.core.log.LogOptions=QUIET" --conf "spark.ui.showConsoleProgress=false" /app/spark_read_kafka.py 2>nul
 if errorlevel 1 goto :error
 echo.
 
 echo STEP 15: RUN SPARK - PROCESS NEW DATA AND UPDATE DELTA TABLES
-docker exec polling-cdc-spark /opt/spark/bin/spark-submit ^
-    --packages io.delta:delta-core_2.12:2.1.0 ^
-    --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" ^
-    --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" ^
-    --driver-java-options "-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties -Dorg.apache.ivy.core.log.LogOptions=QUIET" ^
-    --conf "spark.ui.showConsoleProgress=false" ^
-    /app/spark_process_raw.py 2>nul
+docker exec polling-cdc-spark /opt/spark/bin/spark-submit --packages io.delta:delta-core_2.12:2.1.0 --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" --driver-java-options "-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties -Dorg.apache.ivy.core.log.LogOptions=QUIET" --conf "spark.ui.showConsoleProgress=false" /app/spark_process_raw.py 2>nul
 if errorlevel 1 goto :error
 echo.
 
