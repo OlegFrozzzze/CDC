@@ -7,17 +7,8 @@
 ```
 cdc/
 ├── log_based_cdc/      # Log-Based CDC (Debezium + PostgreSQL WAL)
-│   ├── raw_store/      # Raw данные
-│   └── DDS/            # Delta таблицы (Data Delivery System)
-│       └── users/      # Таблица users
 ├── trigger_cdc/        # Trigger-Based CDC (PostgreSQL Triggers)
-│   ├── raw_store/      # Raw данные
-│   └── DDS/            # Delta таблицы
-│       └── users/      # Таблица users
 └── polling_cdc/        # Polling-Based CDC (External Polling)
-    ├── raw_store/      # Raw данные
-    └── DDS/            # Delta таблицы
-        └── users/      # Таблица users
 ```
 
 ## Примеры
