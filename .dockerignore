@@ -1,0 +1,20 @@
+# Игнорируем ненужные файлы при сборке Docker образа
+raw_store/
+delta_tables/
+*.md
+*.txt
+*.bat
+*.sh
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+

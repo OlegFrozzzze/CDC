@@ -1,0 +1,32 @@
+# Минимальный Dockerfile - только для установки зависимостей
+# Используем готовый образ Apache Spark с Python (уже содержит Java, Spark, Python)
+FROM apache/spark-py:v3.2.3
+
+USER root
+
+# Установка Python зависимостей (тихо, без лишних логов)
+# Зависимости устанавливаются один раз в образ для скорости
+RUN pip install --quiet --no-cache-dir --upgrade pip && \
+    pip install --quiet --no-cache-dir requests
+
+# Если requirements.txt существует, устанавливаем дополнительные зависимости
+COPY requirements.txt* /tmp/
+RUN if [ -f /tmp/requirements.txt ]; then \
+        pip install --quiet --no-cache-dir -r /tmp/requirements.txt; \
+    fi && \
+    rm -f /tmp/requirements.txt* || true
+
+# Копируем log4j.properties для подавления INFO логов
+COPY log4j.properties* /opt/spark/conf/
+RUN if [ -f /opt/spark/conf/log4j.properties ]; then \
+        chmod 644 /opt/spark/conf/log4j.properties; \
+    fi || true
+
+# Создание директорий для данных
+RUN mkdir -p /app/raw_store /app/DDS
+
+WORKDIR /app
+
+# Примечание: Python скрипты монтируются через volumes в docker-compose.yml
+# Это позволяет изменять код без пересборки образа
+

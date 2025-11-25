@@ -1,0 +1,4 @@
+# Python dependencies for CDC pipeline
+# pyspark уже включен в образ apache/spark-py, не нужно устанавливать
+requests>=2.31.0
+

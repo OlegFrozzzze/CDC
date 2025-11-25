@@ -1,0 +1,138 @@
+services:
+  # PostgreSQL Database (без logical replication, так как используем триггеры)
+  postgres:
+    image: postgres:15-alpine
+    container_name: trigger-cdc-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: testdb
+    ports:
+      - "5433:5432"  # Другой порт, чтобы не конфликтовать с основным примером
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    networks:
+      - trigger-cdc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Zookeeper (required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: trigger-cdc-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2182:2181"  # Другой порт
+    networks:
+      - trigger-cdc-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: trigger-cdc-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9094:9092"  # Другой порт
+      - "9095:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9094,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - trigger-cdc-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka UI (optional, для удобства)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: trigger-cdc-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8082:8080"  # Другой порт
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    networks:
+      - trigger-cdc-network
+
+  # Python контейнер для чтения изменений из таблицы и отправки в Kafka
+  cdc-producer:
+    image: python:3.11-slim
+    container_name: trigger-cdc-producer
+    depends_on:
+      - postgres
+      - kafka
+    volumes:
+      - ./cdc_producer.py:/app/cdc_producer.py
+      - ./requirements.txt:/app/requirements.txt
+    working_dir: /app
+    command: sh -c "pip install --quiet --no-cache-dir -r requirements.txt && python cdc_producer.py"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: testdb
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: trigger-cdc.users
+      POLL_INTERVAL: 2  # Интервал опроса таблицы изменений в секундах
+    networks:
+      - trigger-cdc-network
+    restart: unless-stopped
+
+  # Spark контейнер для выполнения Spark скриптов
+  spark:
+    build:
+      context: ../log_based_cdc
+      dockerfile: Dockerfile.spark
+    image: cdc-spark:latest
+    container_name: trigger-cdc-spark
+    depends_on:
+      - kafka
+      - postgres
+    volumes:
+      - ./spark_read_kafka.py:/app/spark_read_kafka.py
+      - ./spark_process_raw.py:/app/spark_process_raw.py
+      - ./raw_store:/app/raw_store
+      - ./DDS:/app/DDS
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: trigger-cdc.users
+      RAW_STORE_BASE_PATH: /app/raw_store
+      DELTA_TABLE_PATH: /app/DDS/users
+      SPARK_MASTER: local[*]
+    networks:
+      - trigger-cdc-network
+    # Контейнер не запускается автоматически, используется через docker exec
+    command: tail -f /dev/null
+
+networks:
+  trigger-cdc-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+
