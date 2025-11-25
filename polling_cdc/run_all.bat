@@ -26,6 +26,21 @@ echo STEP 2: BUILD AND START CONTAINERS
 docker images cdc-spark:latest 2>nul | findstr "cdc-spark" >nul
 if errorlevel 1 (
     echo Building Spark image (first time only, downloading base image ~500MB)
+    echo Step 1: Pulling base image apache/spark-py:v3.2.3...
+    docker pull apache/spark-py:v3.2.3
+    if errorlevel 1 (
+        echo.
+        echo ERROR: Failed to pull base image from Docker Hub.
+        echo This might be due to:
+        echo   - Network connectivity issues
+        echo   - Firewall blocking Docker Hub access
+        echo   - Docker daemon not running properly
+        echo.
+        echo Please check your internet connection and Docker settings.
+        echo You can try manually: docker pull apache/spark-py:v3.2.3
+        goto :error
+    )
+    echo Step 2: Building custom Spark image...
     docker-compose build spark
     if errorlevel 1 goto :error
 ) else (
